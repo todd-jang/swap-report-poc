@@ -18,3 +18,12 @@ helm/
         ├── deployment.yaml
         ├── service.yaml
         └── ingress.yaml
+
+확장 아이디어:
+Spring Cloud Gateway를 통해 API Gateway 분리
+
+Istio 기반 서비스 메쉬 도입
+
+S3 / GCS 기반 보고서 아카이빙
+
+Elasticsearch + Kibana 기반 검색 로그 시스템
