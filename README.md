@@ -264,3 +264,114 @@ API Gateway + Observability 강화	인증, 라우팅, 로깅, 트레이싱 등 �
 ✔️ swap-report-poc는 모놀리딕이더라도
 → 클라이언트 분리 + 데이터 동기화 + 클라우드 AI 인터페이스 구성
 이 완료되면 실질적으로 하이브리드 멀티 클라우드 아키텍처로 진화 가능합니다.
+
+✅ Step 1: Spring Cloud Gateway - 개요
+🎯 목적
+외부 클라이언트의 요청을 단일 지점(Gateway)에서 수신
+
+URI 기반 라우팅으로 내부 서비스로 분산
+
+인증, 로깅, CORS, 속도 제한 등의 공통 concern 처리
+
+✅ Step 2: 프로젝트 구성
+
+swap-report-gateway/
+├── src/main/java/com/swap/gateway
+│   ├── GatewayApplication.java
+│   └── config/
+│       ├── RouteConfig.java
+│       └── JwtAuthenticationFilter.java
+├── src/main/resources/
+│   └── application.yml
+└── pom.xml
+
+✅ Step 3: pom.xml
+xml
+Copy
+Edit
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-gateway</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <!-- Optional: Actuator, config client, etc -->
+  </dependencies>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>2021.0.8</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>
+✅ Step 4: application.yml
+yaml
+Copy
+Edit
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      default-filters:
+        - AddResponseHeader=X-Gateway-Header, Swap-Gateway
+      routes:
+        - id: report-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/report/**
+        - id: inference-service
+          uri: http://localhost:8082
+          predicates:
+            - Path=/inference/**
+        - id: alert-service
+          uri: http://localhost:8083
+          predicates:
+            - Path=/alert/**
+이 구성은 향후 Eureka/Consul 같은 서비스 디스커버리와 연동 가능 (uri: lb://report-service)
+
+✅ Step 5: GatewayApplication.java
+java
+Copy
+Edit
+@SpringBootApplication
+public class GatewayApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(GatewayApplication.class, args);
+    }
+}
+✅ Step 6: 필터 구현 예시 (JWT 인증)
+java
+Copy
+Edit
+@Component
+public class JwtAuthenticationFilter implements GlobalFilter {
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+            return exchange.getResponse().setComplete();
+        }
+        // 실제 JWT 검증 로직 삽입 가능
+        return chain.filter(exchange);
+    }
+}
+✅ Step 7: 테스트
+bash
+Copy
+Edit
+curl http://localhost:8080/report/status
+curl http://localhost:8080/inference/check
+curl http://localhost:8080/alert/recent
