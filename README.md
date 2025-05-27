@@ -525,3 +525,132 @@ public class InferenceController {
         return aggregator.inferWithAggregation(request);
     }
 }
+  프로젝트 최종 구조
+
+swap-report-poc/
+├── swap-report-ai/            <-- 공통 AI 추론 서브모듈
+│   ├── adapter/
+│   │   ├── VertexAIAdapter.java
+│   │   ├── AWSBedrockAdapter.java
+│   │   ├── AzureOpenAIAdapter.java
+│   │   ├── AnthropicClaudeAdapter.java
+│   │   ├── MistralAdapter.java
+│   │   └── CohereAdapter.java
+│   ├── core/
+│   │   ├── AIInferenceService.java
+│   │   ├── InferenceRequest.java
+│   │   ├── InferenceResponse.java
+│   │   └── MultiCloudRouter.java
+│   ├── service/
+│   │   └── ParallelInferenceAggregator.java
+│   ├── monitoring/
+│   │   └── AIResponseMetrics.java
+│   └── controller/
+│       └── InferenceController.java
+
+
+✅ 2. 어댑터 예시 (VertexAIAdapter.java)
+java
+Copy
+Edit
+@Component
+public class VertexAIAdapter implements AIInferenceService {
+
+    @Override
+    public CompletableFuture<InferenceResponse> inferAsync(InferenceRequest request) {
+        long start = System.currentTimeMillis();
+
+        return WebClient.create()
+            .post()
+            .uri("https://vertex-ai.googleapis.com/v1/...") // 실제 endpoint
+            .header("Authorization", "Bearer " + System.getenv("VERTEX_AI_KEY"))
+            .bodyValue(Map.of("prompt", request.getPrompt()))
+            .retrieve()
+            .bodyToMono(String.class)
+            .map(result -> new InferenceResponse(result, System.currentTimeMillis() - start, getProvider()))
+            .toFuture();
+    }
+
+    @Override
+    public String getProvider() {
+        return "GCP";
+    }
+}
+Cohere / Mistral / Claude도 동일 방식으로 확장 가능
+
+API Key는 Vault 또는 Secrets Manager 연동 (아래 참조)
+
+✅ 3. 병렬 Aggregator (ParallelInferenceAggregator.java)
+java
+Copy
+Edit
+@Service
+public class ParallelInferenceAggregator {
+    private final List<AIInferenceService> services;
+
+    public ParallelInferenceAggregator(List<AIInferenceService> services) {
+        this.services = services;
+    }
+
+    public InferenceResponse inferWithFallback(InferenceRequest request) {
+        List<CompletableFuture<InferenceResponse>> futures = services.stream()
+            .map(s -> s.inferAsync(request).exceptionally(e -> new InferenceResponse("FAIL", -1, s.getProvider())))
+            .toList();
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        return futures.stream().map(CompletableFuture::join)
+            .filter(r -> r.getLatencyMs() > 0)
+            .min(Comparator.comparingLong(InferenceResponse::getLatencyMs))
+            .orElse(new InferenceResponse("All failed", -1, "N/A"));
+    }
+}
+✅ 4. 실시간 반응 가능한 아키텍처 설계
+최신 데이터 기반 반응성 확보를 위한 2가지 핵심 요소:
+
+① 온프레미스 + 클라우드 이중화 (Storage Layer)
+PostgreSQL → AWS RDS + GCP Cloud SQL 양방향 동기화
+
+Kafka (MirrorMaker 2.0) + Debezium → CDC 기반 실시간 이벤트 전달
+
+② 분석 시스템에 최신 상태 반영
+클라우드 AI 서비스에는 Kafka 스트림을 통해 최신 이벤트 Push
+
+AIInferenceRequest는 S3 저장 → Notification → Trigger Lambda/Cloud Function → API 호출
+
+✅ 5. 인증 Vault 통합 (HashiCorp Vault 예시)
+⬥ Vault 구성
+bash
+Copy
+Edit
+vault secrets enable kv
+vault kv put secret/ai-keys gcp_key=abc123 aws_key=def456 azure_key=xyz789
+⬥ Spring Vault 연동
+application.yml
+
+yaml
+Copy
+Edit
+spring:
+  cloud:
+    vault:
+      uri: http://localhost:8200
+      authentication: TOKEN
+      token: s.abcdef123456
+      kv:
+        enabled: true
+        application-name: ai-keys
+⬥ 코드 사용 예시
+java
+Copy
+Edit
+@Value("${gcp_key}")
+private String gcpApiKey;
+이렇게 하면 어댑터에서 System.getenv() 또는 @Value로 키를 안전하게 로딩할 수 있습니다.
+
+📈 6. Prometheus + Grafana 모니터링
+/actuator/prometheus endpoint 노출
+
+AIResponseMetrics 클래스에서 provider별 latency observe
+
+Grafana에서 클라우드별 응답시간/성공률/에러율 시각화
