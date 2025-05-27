@@ -227,3 +227,40 @@ swap-report는 보안을 중시하는 온프렘 기반 핵심 시스템,
 swap-report-gateway는 클라우드 친화적 확장성과 통합을 위한 프론트 컨트롤러입니다.
 
 이 철학에 따라 다음 단계인 Istio 기반 서비스 메시 설계에 진입하면, 내부 서비스 간 제어와 클라우드 연동 확장 모두 수월해집니다.
+
+
+멀티 클라우드 AI/서비스 연계 시 기술적 문제
+다음은 AWS, GCP, Azure 등 클라우드의 특정 서비스를 병렬로 연계할 때 발생하는 핵심 기술 이슈들입니다:
+
+문제 영역	기술적 문제	대응 방법
+1. 인증	각 클라우드가 서로 다른 인증 체계 (IAM, OAuth, API Key) 사용	Gateway에서 통합 인증 토큰 관리 (ex: 외부 Key Vault + 서비스별 Secret Mount)
+2. 네트워크	온프렘↔클라우드 간 VPN or VPC Peering 필요	Cloud Interconnect, VPC Peering, 또는 Istio Federation 활용
+3. 데이터 정합성	실시간 분석 위해 여러 클라우드에 동시 전송/복제 필요	Kafka Connect, Debezium CDC, AWS DMS, GCP Datastream 등으로 CDC 구성
+4. 장애 복구	특정 클라우드 불능 시, 요청 재전송 또는 Failover 어려움	Circuit Breaker + Retry + Cloud별 Backup Path 구성 (ex: Fallback to GCP if AWS down)
+5. 성능 차이	AI 호출 시 응답 지연 발생 가능 (ex: VertexAI vs Bedrock vs Azure OpenAI)	Async 처리 + Response Timeout 조절 + QoS 정책 적용
+6. API 사양 불일치	예측 요청 및 응답 구조가 다름 (예: Prompt 형식)	클라우드별 Wrapper 생성 → 표준화된 중간계층에서 추상화 처리
+
+🔧 실현 가능한 아키텍처 예
+plaintext
+Copy
+Edit
+              [FastAPI Client (Edge)]
+                        ↓
+         ┌───────────[Cloud Gateway]────────────┐
+         │                                      │
+   [Spring Boot - swap-report (OnPrem)]   [Inference Layer (Cloud)]
+         │                                      │
+         │   Kafka / CDC   ↑       ↓ REST       │
+         └──────────────→ [Vertex AI, Bedrock, Azure AI]
+✅ 대응 전략 요약
+전략	설명
+클라이언트는 클라우드 (FastAPI + Web UI)	경량화 + 클라우드 배포로 민첩한 UX 제공
+서버는 온프렘 유지 (Spring Boot)	보안/규제 지킨 채 핵심 처리
+데이터 복제는 실시간 (CDC + Kafka)	클라우드 AI와 동기화된 판단 가능
+AI 서비스 연계는 Wrapper 통해 통합	서로 다른 클라우드 AI를 공통 인터페이스로 추상화
+API Gateway + Observability 강화	인증, 라우팅, 로깅, 트레이싱 등 관측성 확보
+
+🧩 결론
+✔️ swap-report-poc는 모놀리딕이더라도
+→ 클라이언트 분리 + 데이터 동기화 + 클라우드 AI 인터페이스 구성
+이 완료되면 실질적으로 하이브리드 멀티 클라우드 아키텍처로 진화 가능합니다.
