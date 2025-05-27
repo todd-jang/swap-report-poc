@@ -1,0 +1,8 @@
+image:
+  repository: your-dockerhub/swap-report-poc
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
