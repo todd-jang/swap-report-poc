@@ -20,6 +20,7 @@ helm/
         └── ingress.yaml
 
 확장 아이디어:
+
 Spring Cloud Gateway를 통해 API Gateway 분리
 
 Istio 기반 서비스 메쉬 도입
