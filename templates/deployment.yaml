@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: swap-report-poc
+  template:
+    metadata:
+      labels:
+        app: swap-report-poc
+    spec:
+      containers:
+        - name: swap-report-poc
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 8080
