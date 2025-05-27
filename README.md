@@ -375,3 +375,153 @@ Edit
 curl http://localhost:8080/report/status
 curl http://localhost:8080/inference/check
 curl http://localhost:8080/alert/recent
+
+
+참고사항 
+
+AIInferenceService 병렬 비동기 호출 + fallback + 응답 집계 + 모니터링 통합 설계 및 구현 예시입니다:
+
+✅ 전체 요구사항 요약
+✅ 클라우드별 AI 어댑터 구현 (문서 기반)
+
+✅ 비동기 병렬 호출 (GCP + AWS + Azure 동시)
+
+✅ 응답 Aggregation 처리 (가장 빠른 결과 or 다수결 등 전략 선택)
+
+✅ 특정 클라우드 실패 시 fallback 처리
+
+✅ Prometheus + Grafana 응답 시간 모니터링 포함
+
+📦 1. 어댑터 인터페이스 (공통)
+java
+Copy
+Edit
+public interface AIInferenceService {
+    CompletableFuture<InferenceResponse> inferAsync(InferenceRequest request);
+    String getProvider(); // GCP, AWS, AZURE
+}
+☁️ 2. GCP Vertex AI 어댑터 예시 (문서 기반)
+java
+Copy
+Edit
+@Component
+public class VertexAIAdapter implements AIInferenceService {
+
+    private final WebClient webClient = WebClient.create();
+
+    @Override
+    public CompletableFuture<InferenceResponse> inferAsync(InferenceRequest request) {
+        long start = System.currentTimeMillis();
+
+        return webClient.post()
+                .uri("https://vertex-ai.googleapis.com/v1/...")
+                .header("Authorization", "Bearer ...")
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(String.class)
+                .map(result -> new InferenceResponse(result, System.currentTimeMillis() - start, getProvider()))
+                .toFuture();
+    }
+
+    @Override
+    public String getProvider() {
+        return "GCP";
+    }
+}
+⚠️ AWSBedrockAdapter, AzureOpenAIAdapter 도 동일 구조로 작성
+☑️ 실서비스에서는 API 문서 기반 Prompt 전송 포맷 맞춰야 함
+
+⚙️ 3. 병렬 호출 + Aggregation + Fallback 처리 서비스
+java
+Copy
+Edit
+@Service
+public class ParallelAIInferenceAggregator {
+
+    private final List<AIInferenceService> services;
+
+    public ParallelAIInferenceAggregator(List<AIInferenceService> services) {
+        this.services = services;
+    }
+
+    public InferenceResponse inferWithAggregation(InferenceRequest request) {
+        List<CompletableFuture<InferenceResponse>> futures = services.stream()
+                .map(service -> service.inferAsync(request)
+                        .exceptionally(e -> new InferenceResponse("Fallback from " + service.getProvider(), -1L, service.getProvider())))
+                .collect(Collectors.toList());
+
+        CompletableFuture<Void> allDone = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+
+        try {
+            allDone.get(5, TimeUnit.SECONDS); // timeout 설정
+        } catch (Exception e) {
+            // 전체 실패 처리
+            return new InferenceResponse("All providers failed", -1L, "N/A");
+        }
+
+        List<InferenceResponse> results = futures.stream()
+                .map(CompletableFuture::join)
+                .filter(resp -> resp.getLatencyMs() > 0)
+                .sorted(Comparator.comparingLong(InferenceResponse::getLatencyMs))
+                .collect(Collectors.toList());
+
+        return results.isEmpty() ? new InferenceResponse("No successful response", -1L, "N/A") : results.get(0); // fastest
+    }
+}
+🔍 4. Prometheus 메트릭 통합
+java
+Copy
+Edit
+@Component
+public class AIResponseMetrics {
+
+    private final Summary latencySummary = Summary.build()
+        .name("ai_inference_latency_ms")
+        .help("Latency of AI responses in milliseconds")
+        .labelNames("provider")
+        .register();
+
+    public void recordLatency(String provider, long latency) {
+        latencySummary.labels(provider).observe(latency);
+    }
+}
+➡️ 각 어댑터 또는 Aggregator 내에서 recordLatency(provider, latency) 호출
+
+java
+Copy
+Edit
+metrics.recordLatency("GCP", System.currentTimeMillis() - start);
+📈 5. Grafana 대시보드 설정 (예시)
+Prometheus 쿼리:
+
+prometheus
+Copy
+Edit
+ai_inference_latency_ms_sum{provider="GCP"}
+패널:
+
+응답 시간 평균/최대값
+
+클라우드별 성공률
+
+응답 카운트 (per provider)
+
+✅ 종합 예: Controller
+java
+Copy
+Edit
+@RestController
+@RequestMapping("/inference")
+public class InferenceController {
+
+    private final ParallelAIInferenceAggregator aggregator;
+
+    public InferenceController(ParallelAIInferenceAggregator aggregator) {
+        this.aggregator = aggregator;
+    }
+
+    @PostMapping
+    public InferenceResponse infer(@RequestBody InferenceRequest request) {
+        return aggregator.inferWithAggregation(request);
+    }
+}
