@@ -654,3 +654,30 @@ private String gcpApiKey;
 AIResponseMetrics 클래스에서 provider별 latency observe
 
 Grafana에서 클라우드별 응답시간/성공률/에러율 시각화
+
+
+개선 제안 (Suggestions)
+DTO 사용 부재:
+
+SwapController에서 List<Swap> 즉, 도메인(엔티티) 객체를 직접 반환하고 있습니다. 이는 API 응답이 내부 데이터 모델에 직접적으로 결합되는 문제가 있습니다.
+단점:
+내부 구현(DB 스키마) 변경 시 API 스펙이 변경됩니다.
+불필요하거나 민감한 데이터가 노출될 수 있습니다.
+양방향 연관관계 등에서 직렬화 문제가 발생할 수 있습니다 (Lazy Loading 등).
+개선: SwapResponseDto와 같은 DTO(Data Transfer Object)를 정의하고, Mapstruct (이미 의존성에 있음) 등을 활용하여 엔티티를 DTO로 변환하여 반환하는 것이 좋습니다. (이 부분은 MVP 버전에서 개선되었습니다 👍)
+QueryDSL vs Jooq - 의존성 정리:
+
+QueryDSL과 Jooq가 모두 설정되어 있지만, 실제 쿼리는 Jooq로 작성되었습니다. 만약 Jooq를 메인으로 사용하기로 결정했다면, QueryDSL 관련 설정 및 의존성을 제거하여 프로젝트를 더 가볍고 명확하게 만들 수 있습니다. 반대로 QueryDSL을 사용한다면 Jooq를 제거해야 합니다. POC 단계에서는 탐색이 중요하지만, MVP나 프로덕션 단계에서는 기술 스택을 명확히 하는 것이 좋습니다. 🛠️
+미사용 의존성 (Thymeleaf):
+
+build.gradle에 Thymeleaf 의존성이 포함되어 있지만, 현재 코드에는 템플릿 파일이나 Thymeleaf를 사용하는 뷰 컨트롤러가 보이지 않습니다. 만약 API 서버로만 사용할 계획이라면, 이 의존성은 제거하는 것이 좋습니다.
+테스트, 예외 처리, 검증 부재:
+
+MVP 리뷰에서도 언급되었지만, POC 단계라 하더라도 기본적인 단위 테스트를 추가하면 좋습니다.
+견고한 애플리케이션을 위해서는 예외 처리와 입력값 검증 로직을 추가하는 것이 필수적입니다.
+Mapstruct 미사용:
+
+DTO를 사용하지 않으므로, 의존성에 포함된 Mapstruct가 현재 사용되지 않고 있습니다. DTO를 도입하면서 함께 활용하면 좋습니다.
+기술 스택 버전:
+
+Spring Boot 2.7 및 Java 11을 사용하고 있습니다. 특별한 이유가 없다면, 보안 및 성능 향상, 최신 기능 활용을 위해 MVP 버전처럼 최신 LTS 버전으로 업그레이드하는 것을 고려해볼 수 있습니다. ⬆️
