@@ -1,6 +1,6 @@
-package com.example.swapreport.application.service;
+package com.swapreporting.application.service;
 
-import com.example.swapreport.domain.report.model.Report;
+import com.swapreporting.domain.report.model.Report;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;

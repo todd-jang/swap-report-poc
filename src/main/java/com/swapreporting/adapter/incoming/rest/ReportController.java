@@ -1,7 +1,7 @@
-package com.example.swapreport.adapter.incoming.rest;
+package com.swapreporting.adapter.incoming.rest;
 
-import com.example.swapreport.application.service.ReportingFlowService;
-import com.example.swapreport.domain.report.model.Report;
+import com.swapreporting.application.service.ReportingFlowService;
+import com.swapreporting.domain.report.model.Report;
 import org.springframework.web.bind.annotation.*;
 
 @RestController

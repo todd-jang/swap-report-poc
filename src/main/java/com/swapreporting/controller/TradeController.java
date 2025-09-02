@@ -1,6 +1,6 @@
 package com.swapreporting.controller;
 
-import com.swapreporting.dto.SwapTradeRequest;
+import com.swapreporting.config.SwapTradeRequest;
 import com.swapreporting.dto.SwapTradeResponse;
 import com.swapreporting.ingestion.TradeIngestionService;
 import com.swapreporting.validation.TradeValidationService;
@@ -9,6 +9,9 @@ import com.swapreporting.persistence.TradeRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.List;
+import org.springframework.http.HttpHeaders;
 
 @RestController
 @RequestMapping("/api/trades")

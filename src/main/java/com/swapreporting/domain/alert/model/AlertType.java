@@ -1,4 +1,4 @@
-package com.example.swapreport.domain.alert.model;
+package com.swapreporting.domain.alert.model;
 
 public enum AlertType {
     RISK_ANOMALY,

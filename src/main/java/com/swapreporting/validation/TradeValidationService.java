@@ -4,8 +4,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class TradeValidationService {
-    public boolean validate(String tradeId) {
-        // TODO: Apply CFTC rules for validation
+    public boolean validate(String uti) {
+        // Simulate trade validation
         return true;
     }
 }
